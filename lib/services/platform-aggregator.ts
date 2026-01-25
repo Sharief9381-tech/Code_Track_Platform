@@ -1,0 +1,255 @@
+import { 
+  fetchLeetCodeStats, 
+  fetchGitHubStats, 
+  fetchCodeforcesStats, 
+  fetchCodeChefStats 
+} from '@/lib/platforms'
+
+export interface AggregatedStats {
+  totalProblems: number
+  githubContributions: number
+  contestsAttended: number
+  currentRating: number
+  platformBreakdown: {
+    leetcode: {
+      problems: number
+      easy: number
+      medium: number
+      hard: number
+      rating: number
+    }
+    github: {
+      contributions: number
+      repositories: number
+      followers: number
+    }
+    codeforces: {
+      problems: number
+      rating: number
+      contests: number
+    }
+    codechef: {
+      problems: number
+      rating: number
+      stars: string
+    }
+  }
+  skillsAnalysis: {
+    primaryLanguages: string[]
+    difficultyDistribution: {
+      easy: number
+      medium: number
+      hard: number
+    }
+    activityLevel: 'Low' | 'Medium' | 'High' | 'Very High'
+    overallRank: 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert'
+  }
+  lastUpdated: Date
+}
+
+export class PlatformAggregator {
+  static async aggregateUserStats(linkedPlatforms: Record<string, string>): Promise<AggregatedStats> {
+    const platformBreakdown = {
+      leetcode: { problems: 0, easy: 0, medium: 0, hard: 0, rating: 0 },
+      github: { contributions: 0, repositories: 0, followers: 0 },
+      codeforces: { problems: 0, rating: 0, contests: 0 },
+      codechef: { problems: 0, rating: 0, stars: '1*' }
+    }
+
+    let totalProblems = 0
+    let githubContributions = 0
+    let contestsAttended = 0
+    let currentRating = 0
+    const primaryLanguages: string[] = []
+
+    // Fetch and aggregate LeetCode stats
+    if (linkedPlatforms.leetcode) {
+      try {
+        const leetcodeStats = await fetchLeetCodeStats(linkedPlatforms.leetcode)
+        if (leetcodeStats) {
+          platformBreakdown.leetcode = {
+            problems: leetcodeStats.totalSolved,
+            easy: leetcodeStats.easySolved,
+            medium: leetcodeStats.mediumSolved,
+            hard: leetcodeStats.hardSolved,
+            rating: leetcodeStats.ranking
+          }
+          totalProblems += leetcodeStats.totalSolved
+          currentRating = Math.max(currentRating, leetcodeStats.ranking)
+        }
+      } catch (error) {
+        console.error('Error fetching LeetCode stats:', error)
+      }
+    }
+
+    // Fetch and aggregate GitHub stats
+    if (linkedPlatforms.github) {
+      try {
+        const githubStats = await fetchGitHubStats(linkedPlatforms.github)
+        if (githubStats) {
+          platformBreakdown.github = {
+            contributions: githubStats.totalContributions,
+            repositories: githubStats.publicRepos,
+            followers: githubStats.followers
+          }
+          githubContributions = githubStats.totalContributions
+          
+          // Extract primary languages
+          const languages = Object.entries(githubStats.languages)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 3)
+            .map(([lang]) => lang)
+          primaryLanguages.push(...languages)
+        }
+      } catch (error) {
+        console.error('Error fetching GitHub stats:', error)
+      }
+    }
+
+    // Fetch and aggregate Codeforces stats
+    if (linkedPlatforms.codeforces) {
+      try {
+        const codeforcesStats = await fetchCodeforcesStats(linkedPlatforms.codeforces)
+        if (codeforcesStats) {
+          platformBreakdown.codeforces = {
+            problems: codeforcesStats.problemsSolved,
+            rating: codeforcesStats.rating,
+            contests: codeforcesStats.contests.length
+          }
+          totalProblems += codeforcesStats.problemsSolved
+          contestsAttended += codeforcesStats.contests.length
+          currentRating = Math.max(currentRating, codeforcesStats.rating)
+        }
+      } catch (error) {
+        console.error('Error fetching Codeforces stats:', error)
+      }
+    }
+
+    // Fetch and aggregate CodeChef stats
+    if (linkedPlatforms.codechef) {
+      try {
+        const codechefStats = await fetchCodeChefStats(linkedPlatforms.codechef)
+        if (codechefStats) {
+          platformBreakdown.codechef = {
+            problems: codechefStats.problemsSolved,
+            rating: codechefStats.currentRating,
+            stars: codechefStats.stars
+          }
+          totalProblems += codechefStats.problemsSolved
+          currentRating = Math.max(currentRating, codechefStats.currentRating)
+        }
+      } catch (error) {
+        console.error('Error fetching CodeChef stats:', error)
+      }
+    }
+
+    // Calculate skills analysis
+    const skillsAnalysis = this.calculateSkillsAnalysis(
+      totalProblems,
+      githubContributions,
+      contestsAttended,
+      currentRating,
+      platformBreakdown,
+      primaryLanguages
+    )
+
+    return {
+      totalProblems,
+      githubContributions,
+      contestsAttended,
+      currentRating,
+      platformBreakdown,
+      skillsAnalysis,
+      lastUpdated: new Date()
+    }
+  }
+
+  private static calculateSkillsAnalysis(
+    totalProblems: number,
+    githubContributions: number,
+    contestsAttended: number,
+    currentRating: number,
+    platformBreakdown: any,
+    primaryLanguages: string[]
+  ) {
+    // Calculate difficulty distribution
+    const difficultyDistribution = {
+      easy: platformBreakdown.leetcode.easy,
+      medium: platformBreakdown.leetcode.medium,
+      hard: platformBreakdown.leetcode.hard
+    }
+
+    // Calculate activity level
+    const totalActivity = totalProblems + Math.floor(githubContributions / 10) + (contestsAttended * 5)
+    let activityLevel: 'Low' | 'Medium' | 'High' | 'Very High'
+    
+    if (totalActivity < 50) activityLevel = 'Low'
+    else if (totalActivity < 200) activityLevel = 'Medium'
+    else if (totalActivity < 500) activityLevel = 'High'
+    else activityLevel = 'Very High'
+
+    // Calculate overall rank
+    let overallRank: 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert'
+    
+    if (totalProblems < 50 && currentRating < 1200) overallRank = 'Beginner'
+    else if (totalProblems < 200 && currentRating < 1600) overallRank = 'Intermediate'
+    else if (totalProblems < 500 && currentRating < 2000) overallRank = 'Advanced'
+    else overallRank = 'Expert'
+
+    return {
+      primaryLanguages: [...new Set(primaryLanguages)].slice(0, 5),
+      difficultyDistribution,
+      activityLevel,
+      overallRank
+    }
+  }
+
+  static async updateUserAggregatedStats(userId: string, linkedPlatforms: Record<string, string>) {
+    try {
+      const aggregatedStats = await this.aggregateUserStats(linkedPlatforms)
+      
+      // Update user's aggregated stats in database
+      const { updateUser } = await import('@/lib/auth')
+      await updateUser(userId, {
+        aggregatedStats,
+        lastStatsUpdate: new Date()
+      })
+
+      return aggregatedStats
+    } catch (error) {
+      console.error('Error updating aggregated stats:', error)
+      throw error
+    }
+  }
+
+  static calculateGlobalRanking(userStats: AggregatedStats, allUsersStats: AggregatedStats[]): {
+    problemsRank: number
+    contributionsRank: number
+    contestsRank: number
+    ratingRank: number
+    overallRank: number
+  } {
+    const sortedByProblems = allUsersStats.sort((a, b) => b.totalProblems - a.totalProblems)
+    const sortedByContributions = allUsersStats.sort((a, b) => b.githubContributions - a.githubContributions)
+    const sortedByContests = allUsersStats.sort((a, b) => b.contestsAttended - a.contestsAttended)
+    const sortedByRating = allUsersStats.sort((a, b) => b.currentRating - a.currentRating)
+    
+    // Calculate overall score for ranking
+    const calculateOverallScore = (stats: AggregatedStats) => {
+      return (stats.totalProblems * 2) + 
+             (Math.floor(stats.githubContributions / 10)) + 
+             (stats.contestsAttended * 5) + 
+             (Math.floor(stats.currentRating / 100))
+    }
+    
+    const sortedByOverall = allUsersStats.sort((a, b) => calculateOverallScore(b) - calculateOverallScore(a))
+
+    return {
+      problemsRank: sortedByProblems.findIndex(s => s === userStats) + 1,
+      contributionsRank: sortedByContributions.findIndex(s => s === userStats) + 1,
+      contestsRank: sortedByContests.findIndex(s => s === userStats) + 1,
+      ratingRank: sortedByRating.findIndex(s => s === userStats) + 1,
+      overallRank: sortedByOverall.findIndex(s => s === userStats) + 1
+    }
+  }
+}
